@@ -95,18 +95,20 @@
 			let addName = true
 			center['sessions'].forEach( session => {
 				if(session['available_capacity']>0){
-					htmlContent += '<tr>';
-					if(addName){
-						htmlContent += `
-						<td rowSpan='`+center['sessions'].length+`'><strong>`+ (rowNumber + 1) +`</strong></th>
-						<td rowSpan='`+center['sessions'].length+`'><strong>`+center['name']+`</strong></td>`;	
-						addName = false;
+					if(session['min_age_limit']!=45){
+						htmlContent += '<tr>';
+						if(addName){
+							htmlContent += `
+							<td rowSpan='`+center['sessions'].length+`'><strong>`+ (rowNumber + 1) +`</strong></th>
+							<td rowSpan='`+center['sessions'].length+`'><strong>`+center['name']+`</strong></td>`;	
+							addName = false;
+						}
+						htmlContent += `<td>`+session['date']+`</td>
+						<td>`+session['available_capacity']+`</td>
+						<td>`+session['min_age_limit']+`</td>
+						<td>`+session['vaccine']+`</td>
+						</tr>`;
 					}
-					htmlContent += `<td>`+session['date']+`</td>
-					<td>`+session['available_capacity']+`</td>
-					<td>`+session['min_age_limit']+`</td>
-					<td>`+session['vaccine']+`</td>
-					</tr>`;
 				}
 			});
 			$('#district-'+ district_id + '-centers').append(htmlContent);	
