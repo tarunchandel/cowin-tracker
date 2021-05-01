@@ -132,7 +132,7 @@
 			$(document).on('click', '.district-toggle', function(e){
 				let district_id = $(this).attr('district-id');
 				let timestamp = new Date();
-				let date = timestamp.getDate() + "-" + timestamp.getMonth() + "-" + timestamp.getFullYear();
+				let date = timestamp.getDate() + "-" + (timestamp.getMonth()+1) + "-" + timestamp.getFullYear();
 				let requestString = `https://cdn-api.co-vin.in/api/v2/appointment/sessions/public/calendarByDistrict?district_id=`+district_id+`&date=`+date;
 				if($('#district-'+ district_id+'-centers').children().length == 0){
 					$("#main-loader .spinner-border").show();
