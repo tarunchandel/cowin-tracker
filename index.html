@@ -25,21 +25,6 @@
 	</div>
 	<div class="container mt-2">
 		<div class="row">
-			<div class="col-2 col-sm-1 mt-5">
-				<!-- <span>Filters:</span> -->
-			</div>
-			<div class="col-10 col-sm-11 mt-5">
-				<div class="form-check form-check-inline d-none" id="strictly18">
-					<input class="form-check-input custom-filters" type="checkbox" id="only-18" value="only-18">
-					<label class="form-check-label" for="only-18">18+</label>
-				</div><!-- 
-				<div class="form-check form-check-inline">
-					<input class="form-check-input custom-filters" type="checkbox" id="show-all" value="show-all">
-					<label class="form-check-label" for="in-stock">In Stock</label>
-				</div> -->
-			</div>
-		</div>
-		<div class="row">
 			<div class="col-12 mt-5">
 				<div class="accordion" id="states">
 
@@ -55,6 +40,7 @@
 				this.id = id;
 				this.name = name;
 				this.districts = [];
+				this.lastUpdated = 0;
 			}
 
 			addDistrict(district){
@@ -69,6 +55,7 @@
 				this.stateId = stateId;
 				this.centers = []
 				this.totalSessions = 0;
+				this.lastUpdated = 0;
 			}
 
 			addCenter(center){
@@ -108,11 +95,12 @@
 				this.isShowing = isShowing;
 			}
 		}
+
 		var strictly18 = true;
-		var states = {}
-		var districts = {}
-		var centers = {}
-		var sessions = {}
+		var states = {};
+		var districts = {};
+		var centers = {};
+		var sessions = {};
 
 		function addState(state){
 			htmlContent = `
@@ -125,7 +113,7 @@
 			</h2>
 			</div>
 			<div id="state-collapse-`+state.id+`" class="collapse" aria-labelledby="state-`+state.id+`	" data-parent="#states">
-			<div class="card-body" id="state-`+state.id+`-districts">
+			<div class="card-body" id="state-`+state.id+`-districts" last-updated="0">
 			</div>
 			</div>
 			</div>
@@ -136,7 +124,7 @@
 
 		function addDistrict(state,district){
 			htmlContent = `
-			<div class="card district-card" total='' showing=''>
+			<div class="card district-card">
 			<div class="card-header" id="district-`+district.id+`">
 			<span class="mb-0">
 			<button class="btn btn-link district-toggle" type="button" data-toggle="collapse" data-target="#district-collapse-`+district.id+`" aria-expanded="true" aria-controls="district-collapse-`+district.id+`" district-id="`+district.id+`">
@@ -160,7 +148,7 @@
 			<th scope="col">Fee</th>
 			</tr>
 			</thead>
-			<tbody id="district-`+district.id+`-centers">
+			<tbody id="district-`+district.id+`-centers" last-updated="0">
 			</tbody>
 			</table>
 			</div>
@@ -199,72 +187,40 @@
 			$('#district-'+ district.id + '-centers').append(htmlContent);	
 		}
 
-		function changeActiveSessions(district, isShowing){
-			if(isShowing){
-				district.increaseTotalSessions();
-			}
-			else{
-				district.decreaseTotalSessions();
-			}
-		}
+		function updateDistrict(districtObj){
+			let show18 = $('#only-18').is(':checked');
+			let timestamp = new Date();
+			let date = timestamp.getDate() + "-" + (timestamp.getMonth() + 1)  + "-" + timestamp.getFullYear();
+			let requestString = `https://cdn-api.co-vin.in/api/v2/appointment/sessions/public/calendarByDistrict?district_id=`+districtObj.id+`&date=`+date;
 
-		function subscribeToNotification(){
+			if(Date.now() - districtObj.lastUpdated > 10000){
+				$("#main-loader .spinner-border").show();
+				districts[districtObj.id] = districtObj;	
+				districtObj.totalSessions = 0;
+				districtObj.lastUpdated = Date.now();
+				$('#district-'+ districtObj.id + '-centers').html('');
+				$.get(requestString, function( data ) {
+					$("#main-loader .spinner-border").hide();
+					data['centers'].forEach((center) => {
+						let centerObj = new Center(center['center_id'], center['name'], center['fee_type'], districtObj.id);
+						centers[centerObj.id] = centerObj;
 
-		}
-
-		function only18(){
-			let affectedDistricts = new Set()
-			if($('#only-18').is(':checked')){
-				$('.age-45').each(function(){
-					let session = sessions[$(this).attr('session-id')];
-					let center = centers[session.centerId];
-					let district = districts[center.districtId];
-					affectedDistricts.add(district);
-					session.isShowing = false;
-					changeActiveSessions(district, false);
-					$(this).addClass('d-none');
+						center['sessions'] = center['sessions'].filter(session => (session['available_capacity'] > 0 && (!strictly18 || session['min_age_limit'] == 18)));
+						districtObj.totalSessions += center['sessions'].length;
+						$('#district-' + districtObj.id + ' .session-count').html('Sessions: ' + districtObj.totalSessions);
+						center['sessions'].forEach(session => {
+							let isShowing = (!show18 || session['min_age_limit'] == 18);
+							let sessionObj = new Session(session['session_id'], session['date'], session['min_age_limit'], session['vaccine'], session['available_capacity'], isShowing, centerObj.id);
+							sessions[sessionObj.id] = sessionObj;
+							centerObj.addSession(sessionObj);
+						});
+						addCenter(districtObj, centerObj);
+					});
 				});
 			}
-			else{
-				$('.age-45').each(function(){
-					let session = sessions[$(this).attr('session-id')];
-					let center = centers[session.centerId];
-					let district = districts[center.districtId];
-					affectedDistricts.add(district);
-					session.isShowing = true;
-					changeActiveSessions(district, true);
-					$(this).removeClass('d-none');
-				});
-			}
-			affectedDistricts.forEach(district => {
-				$('#district-' + district.id + ' .session-count').html('Sessions: ' + district.totalSessions);
-			});
 		}
 
 		$( document ).ready(function() {
-			// if (!window.Notification) {
-			// 	console.log('Browser does not support notifications.');
-			// } else {
-			// 	if (Notification.permission === 'granted') {
-			// 	} else {
-			// 		Notification.requestPermission().then(function(p) {
-			// 			console.log(p);
-			// 			if(p == 'granted') {
-			// 				const notification = new Notification("New message incoming", {
-			// 					body: "Hi there. How are you doing?",
-			// 					icon: "yourimageurl.png"
-			// 				})
-			// 			} else {
-			// 				console.log('User blocked notifications.');
-			// 			}
-			// 		}).catch(function(err) {
-			// 			console.error(err);
-			// 		});
-			// 	}
-			// }
-			if(strictly18){
-				$("#strictly18").hide();
-			}
 			$.get( "https://cdn-api.co-vin.in/api/v2/admin/location/states", function( data ) {
 				$("#main-loader .spinner-border").hide();
 				data['states'].forEach(state => {
@@ -275,60 +231,27 @@
 			});
 
 			$(document).on('click', '.state-toggle', function(e){
-				let show18 = $('#only-18').is(':checked');
 				let state_id = $(this).attr('state-id');
 				let state = states[state_id];
-				if(state.districts.length == 0){
+				if(Date.now() - state.lastUpdated > 10000){
 					$("#main-loader .spinner-border").show();
+					state.lastUpdated = Date.now();
+					$('#state-'+state.id+'-districts').html('');
+					state.districts = []
 					$.get( "https://cdn-api.co-vin.in/api/v2/admin/location/districts/"+state.id, function( data ) {
-
-						let timestamp = new Date();
-						let date = timestamp.getDate() + "-" + (timestamp.getMonth() + 1)  + "-" + timestamp.getFullYear();
-
 						data['districts'].forEach(district => {
 							let districtObj = new District(district['district_id'], district['district_name'], state.id);
-							districts[districtObj.id] = districtObj;	
 							addDistrict(state, districtObj);
-							state.addDistrict(districtObj);
-
-							let requestString = `https://cdn-api.co-vin.in/api/v2/appointment/sessions/public/calendarByDistrict?district_id=`+districtObj.id+`&date=`+date;
-
-							if(districtObj.centers.length == 0){
-								$("#main-loader .spinner-border").show();
-								let totalSessions = 0;
-								$.get(requestString, function( data ) {
-									$("#main-loader .spinner-border").hide();
-									data['centers'].forEach((center) => {
-										let centerObj = new Center(center['center_id'], center['name'], center['fee_type'], districtObj.id);
-										centers[centerObj.id] = centerObj;
-
-										let district = districts[centerObj.districtId];
-										center['sessions'] = center['sessions'].filter(session => (session['available_capacity'] > 0 && (!strictly18 || session['min_age_limit'] == 18)));
-
-										totalSessions += center['sessions'].length;
-										$('#district-' + district.id + ' .session-count').html('Sessions: ' + district.totalSessions);
-										center['sessions'].forEach(session => {
-											let isShowing = (!show18 || session['min_age_limit'] == 18);
-											let sessionObj = new Session(session['session_id'], session['date'], session['min_age_limit'], session['vaccine'], session['available_capacity'], isShowing, centerObj.id);
-											sessions[sessionObj.id] = sessionObj;
-											if(isShowing){
-												changeActiveSessions(district, isShowing);
-											}
-											centerObj.addSession(sessionObj);
-										});
-										addCenter(districtObj, centerObj);
-									});
-								});
-							}
+							updateDistrict(districtObj);
 						});
 						$("#main-loader .spinner-border").hide();
 					});
 				}
-
 			});
 
-			$(document).on('click', '#only-18', function(){
-				only18();
+			$(document).on('click', '.district-toggle', function(e){
+				let districtObj = districts[$(this).attr('district-id')];
+				updateDistrict(districtObj);
 			});
 		});
 	</script>
